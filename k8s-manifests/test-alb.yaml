@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: finishline-test-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: finishline-test
+  template:
+    metadata:
+      labels:
+        app: finishline-test
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: finishline-test-service
+spec:
+  selector:
+    app: finishline-test
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  # Note: Changed to ClusterIP because 'target-type: ip' bypasses NodePort anyway
+  type: ClusterIP 
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: finishline-ingress
+  annotations:
+    # Modern way to specify scheme
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    # Matches the group name from your Terraform output
+    alb.ingress.kubernetes.io/group.name: finishline
+    # 'ip' mode is more efficient on EKS (it routes directly to the Pod)
+    alb.ingress.kubernetes.io/target-type: ip
+    # Ensures the health check finds the Nginx root page
+    alb.ingress.kubernetes.io/healthcheck-path: /
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+spec:
+  # THIS IS THE CRITICAL FIX: Explicitly links to the AWS Controller
+  ingressClassName: alb 
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: finishline-test-service
+                port:
+                  number: 80
