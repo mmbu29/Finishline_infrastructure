@@ -8,7 +8,7 @@ spec:
       nodeClassRef:
         group: karpenter.k8s.aws
         kind: EC2NodeClass
-        name: bottlerocket-t3a # This must match your EC2NodeClass metadata.name
+        name: bottlerocket-t3a
       requirements:
         - key: kubernetes.io/arch
           operator: In
@@ -18,10 +18,10 @@ spec:
           values: ["linux"]
         - key: karpenter.sh/capacity-type
           operator: In
-          values: ["spot", "on-demand"]
+          values: ["on-demand"] # Removed "spot" to fix the AuthFailure
         - key: node.kubernetes.io/instance-type
           operator: In
-          values: ["t3a.medium", "t3a.large"] # Fulfills the "t3a only" requirement
+          values: ["t3a.medium", "t3a.large"]
   disruption:
     consolidationPolicy: WhenEmptyOrUnderutilized
     consolidateAfter: 1m
