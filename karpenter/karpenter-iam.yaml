@@ -1,0 +1,92 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Karpenter Infrastructure for Finishline EKS - Part 2"
+
+Parameters:
+  ClusterName:
+    Type: String
+    Default: "finishline-dev-eks"
+    Description: Name of the existing Finishline EKS cluster
+
+Resources:
+  # 1. Controller Role (IRSA) - Permissions for Karpenter Pod to manage EC2
+  KarpenterControllerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "KarpenterControllerRole-${ClusterName}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub "arn:aws:iam::${AWS::AccountId}:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/AAF3C4D9417EE61436883575DAD8D02B"
+            Action: "sts:AssumeRoleWithWebIdentity"
+            Condition:
+              StringLike:
+                "oidc.eks.us-east-1.amazonaws.com/id/AAF3C4D9417EE61436883575DAD8D02B:sub": "system:serviceaccount:kube-system:karpenter*"
+                "oidc.eks.us-east-1.amazonaws.com/id/AAF3C4D9417EE61436883575DAD8D02B:aud": "sts.amazonaws.com"
+      Policies:
+        - PolicyName: KarpenterControllerPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  # Required for Karpenter to discover the cluster and environment
+                  - "eks:DescribeCluster"
+                  - "ec2:DescribeInstanceTypeOfferings"
+                  - "ec2:DescribeInstanceTypes"
+                  - "ec2:DescribeAvailabilityZones"
+                  - "ec2:DescribeSubnets"
+                  - "ec2:DescribeSecurityGroups"
+                  - "ec2:DescribeImages"
+                  - "ec2:DescribeInstances"
+                  - "ec2:DescribeSpotPriceHistory"
+                  - "pricing:GetProducts"
+                  - "ssm:GetParameter"
+                  # Required for Karpenter to provision and terminate nodes
+                  - "ec2:CreateFleet"
+                  - "ec2:RunInstances"
+                  - "ec2:CreateLaunchTemplate"
+                  - "ec2:TerminateInstances"
+                  - "iam:PassRole"
+                Resource: "*"
+
+  # 2. Node Role - Permissions for the EC2 Instances launched by Karpenter
+  KarpenterNodeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "KarpenterNodeRole-${ClusterName}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: "ec2.amazonaws.com"
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  # 3. Node Instance Profile - Allows EC2 to use the Node Role
+  KarpenterNodeInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub "KarpenterNodeInstanceProfile-${ClusterName}"
+      Roles:
+        - !Ref KarpenterNodeRole
+
+Outputs:
+  KarpenterControllerRoleArn:
+    Value: !GetAtt KarpenterControllerRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-KarpenterControllerRoleArn"
+  KarpenterNodeRoleName:
+    Value: !Ref KarpenterNodeRole
+    Export:
+      Name: !Sub "${AWS::StackName}-KarpenterNodeRoleName"
+  KarpenterNodeInstanceProfileName:
+    Value: !Ref KarpenterNodeInstanceProfile
+    Export:
+      Name: !Sub "${AWS::StackName}-KarpenterNodeInstanceProfileName"
