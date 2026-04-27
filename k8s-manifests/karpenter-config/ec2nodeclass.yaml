@@ -1,18 +1,23 @@
-apiVersion: karpenter.k8s.aws/v1
+apiVersion: karpenter.k8s.aws/v1beta1
 kind: EC2NodeClass
 metadata:
   name: bottlerocket-t3a
 spec:
   amiFamily: Bottlerocket
-  role: "finishline-dev-eks-karpenter-node-role" # Using the name is cleaner than the full ARN in v1
+
+  # MUST be the full IAM role ARN
+  role: arn:aws:iam::590183777783:role/finishline-dev-eks-karpenter-node-role
+
   subnetSelectorTerms:
     - tags:
-        Name: "dev-private-private-*" # This will grab both 1a and 1b in the Dev VPC
+        kubernetes.io/cluster/finishline-dev-eks: owned
     - tags:
-        kubernetes.io/role/internal-elb: "1" # Common tag for private subnets
+        kubernetes.io/role/internal-elb: "1"
+
   securityGroupSelectorTerms:
     - tags:
-        kubernetes.io/cluster/finishline-dev-eks: "owned"
+        kubernetes.io/cluster/finishline-dev-eks: owned
+
   tags:
     karpenter.sh/discovery: finishline-dev-eks
     Project: "FinishLine2026"

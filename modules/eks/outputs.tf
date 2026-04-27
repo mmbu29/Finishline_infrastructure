@@ -35,3 +35,9 @@ output "alb_controller_role_arn" {
   description = "The ARN of the IAM role for the AWS Load Balancer Controller"
   value       = aws_iam_role.alb_controller.arn
 }
+
+# --- KMS Key for EKS Encryption ---
+output "kms_key_arn" {
+  description = "KMS key used for EKS secret encryption"
+  value       = aws_kms_key.eks.arn
+}

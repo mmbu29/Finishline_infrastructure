@@ -39,10 +39,6 @@ variable "home_cidrs" {
   description = "List of CIDR blocks allowed to access the public endpoint"
 }
 
-variable "kms_key_arn" {
-  type        = string
-  description = "KMS Key ARN for EKS secret encryption"
-}
 
 variable "cluster_endpoint_public_access" {
   type    = bool

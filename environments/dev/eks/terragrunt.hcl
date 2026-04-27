@@ -3,8 +3,7 @@ include "root" {
 }
 
 terraform {
-  # Standardized double-slash for Terragrunt module sourcing
-  source = "../../../modules//eks" 
+  source = "../../../modules//eks"
 }
 
 locals {
@@ -13,7 +12,7 @@ locals {
 
 dependency "vpc" {
   config_path = "../vpc"
-  
+
   mock_outputs = {
     vpc_id             = "vpc-fake-id"
     private_subnet_ids = ["subnet-1", "subnet-2"]
@@ -31,14 +30,9 @@ dependency "iam" {
   }
 }
 
-# Added to fetch the actual KMS Key ARN from your Aurora module
-dependency "aurora" {
-  config_path = "../aurora"
-
-  mock_outputs = {
-    aurora_kms_key_arn = "arn:aws:kms:us-east-1:590183777783:key/mock-key"
-  }
-}
+# ❗ Removed Aurora dependency completely
+# ❗ Removed mock KMS key
+# ❗ You now supply a real KMS key ARN
 
 inputs = {
   environment = local.env_vars.locals.environment
@@ -47,8 +41,8 @@ inputs = {
   # Your NJ Home IP
   home_cidrs  = ["74.88.51.116/32"]
 
-  # FIX: Pulling the real ARN from aurora outputs to replace "your-key-uuid"
-  kms_key_arn = dependency.aurora.outputs.aurora_kms_key_arn
+  # Provide a REAL KMS key ARN here
+  kms_key_arn = "<REAL-KMS-KEY-ARN>"
 
   # Network Inputs
   vpc_id             = dependency.vpc.outputs.vpc_id
@@ -59,8 +53,8 @@ inputs = {
   eks_cluster_role_arn = dependency.iam.outputs.eks_cluster_role_arn
   eks_node_role_arn    = dependency.iam.outputs.eks_node_role_arn
   jumphost_role_arn    = dependency.iam.outputs.jumphost_role_arn
-  
-  # Ensure the cluster is highly available internally
+
+  # EKS Endpoint Access
   cluster_endpoint_private_access = true
   cluster_endpoint_public_access  = true
 }

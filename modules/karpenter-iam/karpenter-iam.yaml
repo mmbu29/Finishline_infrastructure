@@ -5,10 +5,20 @@ Parameters:
   ClusterName:
     Type: String
     Default: "finishline-dev-eks"
-    Description: Name of the existing Finishline EKS cluster
+
+  OIDCProviderArn:
+    Type: String
+    Description: "OIDC Provider ARN for the EKS cluster"
+
+  OIDCProviderUrl:
+    Type: String
+    Description: "OIDC Provider URL (issuer) for the EKS cluster"
 
 Resources:
-  # 1. Controller Role (IRSA) - Permissions for Karpenter Pod to manage EC2
+
+    ###############################################
+  # 1. Karpenter Controller Role (IRSA)
+  ###############################################
   KarpenterControllerRole:
     Type: AWS::IAM::Role
     Properties:
@@ -18,12 +28,13 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              Federated: !Sub "arn:aws:iam::${AWS::AccountId}:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/AAF3C4D9417EE61436883575DAD8D02B"
+              Federated: !Ref OIDCProviderArn
             Action: "sts:AssumeRoleWithWebIdentity"
             Condition:
-              StringLike:
-                "oidc.eks.us-east-1.amazonaws.com/id/AAF3C4D9417EE61436883575DAD8D02B:sub": "system:serviceaccount:kube-system:karpenter*"
-                "oidc.eks.us-east-1.amazonaws.com/id/AAF3C4D9417EE61436883575DAD8D02B:aud": "sts.amazonaws.com"
+              StringEquals:
+                "${OIDCProviderUrl}:sub": "system:serviceaccount:karpenter:karpenter"
+                "${OIDCProviderUrl}:aud": "sts.amazonaws.com"
+
       Policies:
         - PolicyName: KarpenterControllerPolicy
           PolicyDocument:
@@ -31,7 +42,6 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  # Required for Karpenter to discover the cluster and environment
                   - "eks:DescribeCluster"
                   - "ec2:DescribeInstanceTypeOfferings"
                   - "ec2:DescribeInstanceTypes"
@@ -41,17 +51,27 @@ Resources:
                   - "ec2:DescribeImages"
                   - "ec2:DescribeInstances"
                   - "ec2:DescribeSpotPriceHistory"
-                  - "pricing:GetProducts"
-                  - "ssm:GetParameter"
-                  # Required for Karpenter to provision and terminate nodes
+                  - "ec2:DescribeLaunchTemplates"
+                  - "ec2:DescribeInstanceStatus"
+                  - "ec2:DescribeCapacityReservations"
+                  - "ec2:DescribeNetworkInterfaces"
+                  - "ec2:CreateLaunchTemplate"
+                  - "ec2:CreateLaunchTemplateVersion"
+                  - "ec2:DeleteLaunchTemplate"
                   - "ec2:CreateFleet"
                   - "ec2:RunInstances"
-                  - "ec2:CreateLaunchTemplate"
                   - "ec2:TerminateInstances"
+                  - "ec2:CreateTags"
+                  - "ec2:DeleteTags"
                   - "iam:PassRole"
+                  - "ssm:GetParameter"
+                  - "pricing:GetProducts"
                 Resource: "*"
 
-  # 2. Node Role - Permissions for the EC2 Instances launched by Karpenter
+
+  ###############################################
+  # 2. Karpenter Node Role (EC2)
+  ###############################################
   KarpenterNodeRole:
     Type: AWS::IAM::Role
     Properties:
@@ -69,7 +89,9 @@ Resources:
         - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
 
-  # 3. Node Instance Profile - Allows EC2 to use the Node Role
+  ###############################################
+  # 3. Instance Profile for EC2 Nodes
+  ###############################################
   KarpenterNodeInstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
@@ -80,13 +102,9 @@ Resources:
 Outputs:
   KarpenterControllerRoleArn:
     Value: !GetAtt KarpenterControllerRole.Arn
-    Export:
-      Name: !Sub "${AWS::StackName}-KarpenterControllerRoleArn"
+
   KarpenterNodeRoleName:
     Value: !Ref KarpenterNodeRole
-    Export:
-      Name: !Sub "${AWS::StackName}-KarpenterNodeRoleName"
+
   KarpenterNodeInstanceProfileName:
     Value: !Ref KarpenterNodeInstanceProfile
-    Export:
-      Name: !Sub "${AWS::StackName}-KarpenterNodeInstanceProfileName"

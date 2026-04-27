@@ -16,7 +16,7 @@ inputs = {
   vpc_cidr    = "10.0.0.0/16"
   project     = "finishline"
   # Add your home IP if needed for the jumphost variable in your module
-  home_cidrs  = ["74.88.51.116/32"] 
+  home_cidrs  = ["69.124.74.252/32"] 
 
   public_subnets = {
     "public-1a" = { az = "us-east-1a", cidr = "10.0.1.0/24" }
