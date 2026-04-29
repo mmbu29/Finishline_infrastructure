@@ -35,9 +35,13 @@ inputs = {
   project     = local.env_vars.locals.project
 
   # Home IP for remote management
-  home_cidrs  = ["74.88.51.116/32"]
+  home_cidrs  = ["69.124.74.252/32"]
 
-  # Replace this with your actual KMS ARN from your security module or AWS Console
+  # NEW: Explicitly whitelists your IP at the EKS API Server level
+  # This prevents the "i/o timeout" you encountered locally.
+  public_access_cidrs = ["69.124.74.252/32"]
+
+  # Replace this with your actual KMS ARN
   kms_key_arn = "arn:aws:kms:us-east-1:590183777783:key/your-actual-key-uuid"
 
   # Network Inputs

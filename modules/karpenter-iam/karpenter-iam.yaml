@@ -1,39 +1,40 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "Karpenter Infrastructure for Finishline EKS - Part 2"
+Description: "Karpenter Infrastructure - PascalCase Final Fix"
 
 Parameters:
-  ClusterName:
-    Type: String
-    Default: "finishline-dev-eks"
-
-  OIDCProviderArn:
-    Type: String
-    Description: "OIDC Provider ARN for the EKS cluster"
-
-  OIDCProviderUrl:
-    Type: String
-    Description: "OIDC Provider URL (issuer) for the EKS cluster"
+  ClusterName: { Type: String }
+  OIDCProviderArn: { Type: String }
+  OIDCSubKey: { Type: String }
+  OIDCAudKey: { Type: String }
+  OIDCProviderUrl: { Type: String } 
 
 Resources:
-
-    ###############################################
-  # 1. Karpenter Controller Role (IRSA)
-  ###############################################
   KarpenterControllerRole:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Sub "KarpenterControllerRole-${ClusterName}"
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Federated: !Ref OIDCProviderArn
-            Action: "sts:AssumeRoleWithWebIdentity"
-            Condition:
-              StringEquals:
-                "${OIDCProviderUrl}:sub": "system:serviceaccount:karpenter:karpenter"
-                "${OIDCProviderUrl}:aud": "sts.amazonaws.com"
+      AssumeRolePolicyDocument: 
+        Fn::Sub:
+          - |
+            {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Principal": { "Federated": "${OIDCArn}" },
+                  "Action": "sts:AssumeRoleWithWebIdentity",
+                  "Condition": {
+                    "StringEquals": {
+                      "${SubKey}": "system:serviceaccount:kube-system:karpenter",
+                      "${AudKey}": "sts.amazonaws.com"
+                    }
+                  }
+                }
+              ]
+            }
+          - OIDCArn: !Ref OIDCProviderArn
+            SubKey: !Ref OIDCSubKey
+            AudKey: !Ref OIDCAudKey
 
       Policies:
         - PolicyName: KarpenterControllerPolicy
@@ -43,35 +44,18 @@ Resources:
               - Effect: Allow
                 Action:
                   - "eks:DescribeCluster"
-                  - "ec2:DescribeInstanceTypeOfferings"
-                  - "ec2:DescribeInstanceTypes"
-                  - "ec2:DescribeAvailabilityZones"
-                  - "ec2:DescribeSubnets"
-                  - "ec2:DescribeSecurityGroups"
-                  - "ec2:DescribeImages"
-                  - "ec2:DescribeInstances"
-                  - "ec2:DescribeSpotPriceHistory"
-                  - "ec2:DescribeLaunchTemplates"
-                  - "ec2:DescribeInstanceStatus"
-                  - "ec2:DescribeCapacityReservations"
-                  - "ec2:DescribeNetworkInterfaces"
-                  - "ec2:CreateLaunchTemplate"
-                  - "ec2:CreateLaunchTemplateVersion"
-                  - "ec2:DeleteLaunchTemplate"
-                  - "ec2:CreateFleet"
-                  - "ec2:RunInstances"
-                  - "ec2:TerminateInstances"
-                  - "ec2:CreateTags"
-                  - "ec2:DeleteTags"
+                  - "ec2:*"
                   - "iam:PassRole"
                   - "ssm:GetParameter"
                   - "pricing:GetProducts"
+                  - "iam:CreateInstanceProfile"
+                  - "iam:GetInstanceProfile"
+                  - "iam:DeleteInstanceProfile"
+                  - "iam:TagInstanceProfile"
+                  - "iam:AddRoleToInstanceProfile"
+                  - "iam:RemoveRoleFromInstanceProfile"
                 Resource: "*"
 
-
-  ###############################################
-  # 2. Karpenter Node Role (EC2)
-  ###############################################
   KarpenterNodeRole:
     Type: AWS::IAM::Role
     Properties:
@@ -80,8 +64,7 @@ Resources:
         Version: "2012-10-17"
         Statement:
           - Effect: Allow
-            Principal:
-              Service: "ec2.amazonaws.com"
+            Principal: { Service: "ec2.amazonaws.com" }
             Action: "sts:AssumeRole"
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
@@ -89,22 +72,16 @@ Resources:
         - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
 
-  ###############################################
-  # 3. Instance Profile for EC2 Nodes
-  ###############################################
   KarpenterNodeInstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
       InstanceProfileName: !Sub "KarpenterNodeInstanceProfile-${ClusterName}"
-      Roles:
-        - !Ref KarpenterNodeRole
+      Roles: [!Ref KarpenterNodeRole]
 
 Outputs:
   KarpenterControllerRoleArn:
     Value: !GetAtt KarpenterControllerRole.Arn
-
   KarpenterNodeRoleName:
     Value: !Ref KarpenterNodeRole
-
   KarpenterNodeInstanceProfileName:
     Value: !Ref KarpenterNodeInstanceProfile
