@@ -3,7 +3,7 @@ include "root" {
 }
 
 terraform {
-  source = "../../../modules//eks"
+  source = "../../../modules/eks"
 }
 
 locals {
@@ -30,19 +30,15 @@ dependency "iam" {
   }
 }
 
-# ❗ Removed Aurora dependency completely
-# ❗ Removed mock KMS key
-# ❗ You now supply a real KMS key ARN
-
 inputs = {
   environment = local.env_vars.locals.environment
   project     = local.env_vars.locals.project
 
-  # Your NJ Home IP
+  # Home IP for remote management
   home_cidrs  = ["74.88.51.116/32"]
 
-  # Provide a REAL KMS key ARN here
-  kms_key_arn = "<REAL-KMS-KEY-ARN>"
+  # Replace this with your actual KMS ARN from your security module or AWS Console
+  kms_key_arn = "arn:aws:kms:us-east-1:590183777783:key/your-actual-key-uuid"
 
   # Network Inputs
   vpc_id             = dependency.vpc.outputs.vpc_id

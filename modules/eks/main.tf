@@ -109,6 +109,10 @@ resource "aws_eks_node_group" "main" {
     min_size     = 2
   }
 
+  update_config {
+    max_unavailable = 1
+  }
+
   depends_on = [aws_eks_cluster.main]
 }
 
@@ -176,14 +180,14 @@ resource "aws_iam_role_policy_attachment" "alb_controller_managed" {
 ###############################################
 resource "aws_eks_access_entry" "jumphost" {
   cluster_name  = aws_eks_cluster.main.name
-  principal_arn = "arn:aws:iam::590183777783:role/finishline-dev-jumphost-role"
+  principal_arn = var.jumphost_role_arn
   type          = "STANDARD"
 }
 
 resource "aws_eks_access_policy_association" "jumphost_admin" {
   cluster_name  = aws_eks_cluster.main.name
   policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
-  principal_arn = "arn:aws:iam::590183777783:role/finishline-dev-jumphost-role"
+  principal_arn = var.jumphost_role_arn
 
   access_scope {
     type = "cluster"

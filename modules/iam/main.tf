@@ -2,9 +2,10 @@ locals {
   name = "finishline-${var.environment}"
 }
 
-# ------------------------------------------------------------
-# 1. EKS Cluster Role
-# ------------------------------------------------------------
+########################################
+# EKS Cluster Role
+########################################
+
 resource "aws_iam_role" "eks_cluster" {
   name = "${local.name}-eks-cluster-role"
 
@@ -17,7 +18,11 @@ resource "aws_iam_role" "eks_cluster" {
     }]
   })
 
-  tags = { Name = "${local.name}-eks-cluster-role" }
+  tags = { 
+    Name        = "${local.name}-eks-cluster-role"
+    Environment = var.environment
+    ManagedBy   = "terraform"
+  }
 }
 
 resource "aws_iam_role_policy_attachment" "eks_cluster_policies" {
@@ -29,9 +34,10 @@ resource "aws_iam_role_policy_attachment" "eks_cluster_policies" {
   policy_arn = each.value
 }
 
-# ------------------------------------------------------------
-# 2. EKS Node Group Role
-# ------------------------------------------------------------
+########################################
+# EKS Node Group Role
+########################################
+
 resource "aws_iam_role" "eks_nodes" {
   name = "${local.name}-eks-nodes-role"
 
@@ -47,7 +53,10 @@ resource "aws_iam_role" "eks_nodes" {
     }]
   })
 
-  tags = { Name = "${local.name}-eks-nodes-role" }
+  tags = { 
+    Name        = "${local.name}-eks-nodes-role"
+    Environment = var.environment
+  }
 }
 
 resource "aws_iam_role_policy_attachment" "eks_node_policies" {
@@ -61,9 +70,10 @@ resource "aws_iam_role_policy_attachment" "eks_node_policies" {
   policy_arn = each.value
 }
 
-# ------------------------------------------------------------
-# 3. Jumphost Role & Instance Profile
-# ------------------------------------------------------------
+########################################
+# Jumphost Role & Instance Profile
+########################################
+
 resource "aws_iam_role" "jumphost" {
   name = "${local.name}-jumphost-role"
 
@@ -89,9 +99,10 @@ resource "aws_iam_instance_profile" "jumphost" {
   role = aws_iam_role.jumphost.name
 }
 
-# ------------------------------------------------------------
-# 4. Aurora RDS Service Role (S3 Integration)
-# ------------------------------------------------------------
+########################################
+# Aurora RDS Service Role (S3 Integration)
+########################################
+
 resource "aws_iam_role" "aurora_s3" {
   name = "${local.name}-aurora-s3-role"
 
@@ -115,7 +126,7 @@ resource "aws_iam_role_policy" "aurora_s3_access" {
     Version = "2012-10-17"
     Statement = [
       {
-        Action   = ["s3:ListBucket"]
+        Action   = ["s3:ListBucket", "s3:GetBucketLocation"]
         Effect   = "Allow"
         Resource = ["arn:aws:s3:::infra-project-mbu"]
       },
@@ -128,11 +139,10 @@ resource "aws_iam_role_policy" "aurora_s3_access" {
   })
 }
 
-# ------------------------------------------------------------
-# 5. Jumphost Scoped Access Policies
-# ------------------------------------------------------------
+########################################
+# Jumphost Scoped Access Policies
+########################################
 
-# Policy to allow reading Aurora Secrets
 resource "aws_iam_policy" "jumphost_secrets" {
   name        = "${var.environment}-jumphost-secrets-policy"
   description = "Allows jumphost to retrieve database credentials"
@@ -159,7 +169,6 @@ resource "aws_iam_role_policy_attachment" "jumphost_secrets_attach" {
   policy_arn = aws_iam_policy.jumphost_secrets.arn
 }
 
-# Policy for EKS Discovery (REVISED with Wildcard)
 resource "aws_iam_policy" "jumphost_eks_describe" {
   name        = "${local.name}-jumphost-eks-policy"
   description = "Allows jumphost to discover and authenticate with EKS clusters"
@@ -171,10 +180,8 @@ resource "aws_iam_policy" "jumphost_eks_describe" {
         Effect = "Allow"
         Action = [
           "eks:DescribeCluster",
-          "eks:AccessKubernetesApi",
-          "eks:ListClusters"
+          "eks:AccessKubernetesApi"
         ]
-        # Wildcard (*) ensures the policy isn't broken by small naming mismatches
         Resource = "arn:aws:eks:us-east-1:590183777783:cluster/finishline-dev-eks*"
       },
       {

@@ -1,5 +1,3 @@
-
-
 ########################################
 # Data Sources
 ########################################
@@ -97,7 +95,7 @@ resource "aws_kms_key" "cloudwatch" {
 
 resource "aws_cloudwatch_log_group" "flow_logs" {
   name              = "/aws/vpc/${var.environment}-flow-logs"
-  retention_in_days = 400
+  retention_in_days = 365
   kms_key_id        = aws_kms_key.cloudwatch.arn
 
   tags = {
@@ -142,7 +140,6 @@ resource "aws_iam_role" "flow_logs" {
 # IAM Policy for Flow Logs
 ########################################
 
-# tfsec:ignore:aws-iam-no-policy-wildcards
 resource "aws_iam_role_policy" "flow_logs" {
   name = "${var.environment}-vpc-flow-logs-policy"
   role = aws_iam_role.flow_logs.id
@@ -222,10 +219,9 @@ resource "aws_subnet" "public" {
     ManagedBy   = "terraform"
     Tier        = "public"
 
-    # REQUIRED: Tells the controller these are for External ALBs
-    "kubernetes.io/role/elb" = "1"
-    # REQUIRED: Links subnets to your specific EKS Cluster
+    "kubernetes.io/role/elb"                   = "1"
     "kubernetes.io/cluster/finishline-dev-eks" = "shared"
+    "karpenter.sh/discovery"                   = "finishline-dev-eks"
   }
 }
 
@@ -248,43 +244,31 @@ resource "aws_subnet" "private" {
     ManagedBy   = "terraform"
     Tier        = "private"
 
-    # REQUIRED: Tells the controller these are for Internal ALBs
-    "kubernetes.io/role/internal-elb" = "1"
-    # REQUIRED: Links subnets to your specific EKS Cluster
+    "kubernetes.io/role/internal-elb"          = "1"
     "kubernetes.io/cluster/finishline-dev-eks" = "shared"
+    "karpenter.sh/discovery"                   = "finishline-dev-eks"
   }
 }
 
 ########################################
-# NAT Gateway + EIP
+# NAT Gateway + EIP (Single for Dev)
 ########################################
 
 resource "aws_eip" "nat" {
-  for_each = aws_subnet.public
-
   domain = "vpc"
 
   tags = {
-    Name        = "${var.environment}-nat-eip-${each.key}"
-    Environment = var.environment
-    Project     = var.project
-    Owner       = "Marcellus"
-    ManagedBy   = "terraform"
+    Name = "${var.environment}-nat-eip"
   }
 }
 
 resource "aws_nat_gateway" "nat" {
-  for_each = aws_subnet.public
-
-  allocation_id = aws_eip.nat[each.key].id
-  subnet_id     = aws_subnet.public[each.key].id
+  # Uses the first public subnet found in the map
+  allocation_id = aws_eip.nat.id
+  subnet_id     = aws_subnet.public[keys(var.public_subnets)[0]].id
 
   tags = {
-    Name        = "${var.environment}-nat-gw-${each.key}"
-    Environment = var.environment
-    Project     = var.project
-    Owner       = "Marcellus"
-    ManagedBy   = "terraform"
+    Name = "${var.environment}-nat-gw"
   }
 
   depends_on = [aws_internet_gateway.igw]
@@ -303,11 +287,7 @@ resource "aws_route_table" "public" {
   }
 
   tags = {
-    Name        = "${var.environment}-public-rt"
-    Environment = var.environment
-    Project     = var.project
-    Owner       = "Marcellus"
-    ManagedBy   = "terraform"
+    Name = "${var.environment}-public-rt"
   }
 }
 
@@ -318,32 +298,26 @@ resource "aws_route_table_association" "public" {
 }
 
 resource "aws_route_table" "private" {
-  for_each = aws_subnet.private
-
   vpc_id = aws_vpc.main.id
 
   route {
     cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.nat[var.private_to_public_nat[each.key]].id
+    nat_gateway_id = aws_nat_gateway.nat.id
   }
 
   tags = {
-    Name        = "${var.environment}-private-rt-${each.key}"
-    Environment = var.environment
-    Project     = var.project
-    Owner       = "Marcellus"
-    ManagedBy   = "terraform"
+    Name = "${var.environment}-private-rt"
   }
 }
 
 resource "aws_route_table_association" "private" {
   for_each       = aws_subnet.private
   subnet_id      = each.value.id
-  route_table_id = aws_route_table.private[each.key].id
+  route_table_id = aws_route_table.private.id
 }
 
 ########################################
-# Security Groups (Egress Only)
+# Security Groups
 ########################################
 
 resource "aws_security_group" "aurora" {
@@ -351,24 +325,15 @@ resource "aws_security_group" "aurora" {
   description = "Aurora PostgreSQL SG"
   vpc_id      = aws_vpc.main.id
 
-  # checkov:skip=CKV2_AWS_5: "Attached in the RDS module"
-  # checkov:skip=CKV_AWS_382: "Egress required for AWS API access"
-
   egress {
-    description = "Outbound required for patches and AWS API access"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    # tfsec:ignore:aws-ec2-no-public-egress-sgr
     cidr_blocks = ["0.0.0.0/0"]
   }
 
   tags = {
-    Name        = "${var.environment}-aurora-sg"
-    Environment = var.environment
-    Project     = var.project
-    Owner       = "Marcellus"
-    ManagedBy   = "terraform"
+    Name = "${var.environment}-aurora-sg"
   }
 }
 
@@ -377,24 +342,15 @@ resource "aws_security_group" "jumphost" {
   description = "Jumphost SG"
   vpc_id      = aws_vpc.main.id
 
-  # checkov:skip=CKV2_AWS_5: "Attached to EC2 instance"
-  # checkov:skip=CKV_AWS_382: "Required for updates"
-
   egress {
-    description = "Outbound required for updates and SSM"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    # tfsec:ignore:aws-ec2-no-public-egress-sgr
     cidr_blocks = ["0.0.0.0/0"]
   }
 
   tags = {
-    Name        = "${var.environment}-jumphost-sg"
-    Environment = var.environment
-    Project     = var.project
-    Owner       = "Marcellus"
-    ManagedBy   = "terraform"
+    Name = "${var.environment}-jumphost-sg"
   }
 }
 
@@ -403,24 +359,15 @@ resource "aws_security_group" "alb" {
   description = "ALB SG"
   vpc_id      = aws_vpc.main.id
 
-  # checkov:skip=CKV2_AWS_5: "Attached to ALB resource"
-  # checkov:skip=CKV_AWS_382: "Health checks egress"
-
   egress {
-    description = "Outbound required for ALB health checks"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    # tfsec:ignore:aws-ec2-no-public-egress-sgr
     cidr_blocks = ["0.0.0.0/0"]
   }
 
   tags = {
-    Name        = "${var.environment}-alb-sg"
-    Environment = var.environment
-    Project     = var.project
-    Owner       = "Marcellus"
-    ManagedBy   = "terraform"
+    Name = "${var.environment}-alb-sg"
   }
 }
 
@@ -429,111 +376,15 @@ resource "aws_security_group" "eks_nodes" {
   description = "EKS worker nodes SG"
   vpc_id      = aws_vpc.main.id
 
-  # checkov:skip=CKV2_AWS_5: "Attached to EKS Node Group"
-  # checkov:skip=CKV_AWS_382: "Nodes must pull images"
-
   egress {
-    description = "Outbound required for pulling container images"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    # tfsec:ignore:aws-ec2-no-public-egress-sgr
     cidr_blocks = ["0.0.0.0/0"]
   }
 
   tags = {
-    Name        = "${var.environment}-eks-nodes-sg"
-    Environment = var.environment
-    Project     = var.project
-    Owner       = "Marcellus"
-    ManagedBy   = "terraform"
-  }
-}
-
-########################################
-# Security Group Rules (Ingress)
-########################################
-
-resource "aws_security_group_rule" "alb_http_in" {
-  # checkov:skip=CKV_AWS_260: "Port 80 required for HTTP to HTTPS redirect"
-  description = "Allow HTTP from internet"
-  type        = "ingress"
-  from_port   = 80
-  to_port     = 80
-  protocol    = "tcp"
-  # tfsec:ignore:aws-ec2-no-public-ingress-sgr
-  cidr_blocks       = ["0.0.0.0/0"]
-  security_group_id = aws_security_group.alb.id
-}
-
-resource "aws_security_group_rule" "alb_https_in" {
-  description = "Allow HTTPS from internet"
-  type        = "ingress"
-  from_port   = 443
-  to_port     = 443
-  protocol    = "tcp"
-  # tfsec:ignore:aws-ec2-no-public-ingress-sgr
-  cidr_blocks       = ["0.0.0.0/0"]
-  security_group_id = aws_security_group.alb.id
-}
-
-resource "aws_security_group_rule" "jumphost_ssh" {
-  # checkov:skip=CKV_AWS_24: "SSH restricted to operator home IPs"
-  description       = "SSH from home IP"
-  type              = "ingress"
-  from_port         = 22
-  to_port           = 22
-  protocol          = "tcp"
-  cidr_blocks       = var.home_cidrs
-  security_group_id = aws_security_group.jumphost.id
-}
-
-resource "aws_security_group_rule" "alb_to_eks" {
-  description              = "Allow ALB to reach EKS nodes"
-  type                     = "ingress"
-  from_port                = 3000
-  to_port                  = 3000
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.eks_nodes.id
-  source_security_group_id = aws_security_group.alb.id
-}
-
-resource "aws_security_group_rule" "eks_to_aurora" {
-  description              = "Allow EKS nodes to reach Aurora"
-  type                     = "ingress"
-  from_port                = 5432
-  to_port                  = 5432
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.aurora.id
-  source_security_group_id = aws_security_group.eks_nodes.id
-}
-
-resource "aws_security_group_rule" "jumphost_to_aurora" {
-  description              = "Allow Jumphost to Aurora"
-  type                     = "ingress"
-  from_port                = 5432
-  to_port                  = 5432
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.aurora.id
-  source_security_group_id = aws_security_group.jumphost.id
-}
-
-
-# VPC Endpoint for S3 (Gateway)
-resource "aws_vpc_endpoint" "s3" {
-  vpc_id            = aws_vpc.main.id
-  service_name      = "com.amazonaws.${var.aws_region}.s3"
-  vpc_endpoint_type = "Gateway"
-
-  # Automatically associates with all private route tables
-  route_table_ids = [for rt in aws_route_table.private : rt.id]
-
-  tags = {
-    Name        = "${var.environment}-s3-endpoint"
-    Environment = var.environment
-    Project     = var.project
-    Owner       = "Marcellus"
-    ManagedBy   = "terraform"
+    Name = "${var.environment}-eks-nodes-sg"
   }
 }
 
@@ -543,16 +394,13 @@ resource "aws_security_group" "eks_cluster" {
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description     = "Allow Jumphost to communicate with the EKS API"
     from_port       = 443
     to_port         = 443
     protocol        = "tcp"
     security_groups = [aws_security_group.jumphost.id]
   }
 
-  # tfsec:ignore:aws-ec2-no-public-egress-sgr
   egress {
-    description = "Allow all outbound traffic for EKS API and AWS service communication"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -564,8 +412,75 @@ resource "aws_security_group" "eks_cluster" {
   }
 }
 
+########################################
+# Security Group Rules
+########################################
+
+resource "aws_security_group_rule" "nodes_internal" {
+  description              = "Allow nodes to communicate with each other (Intra-Node)"
+  type                     = "ingress"
+  from_port                = 0
+  to_port                  = 65535
+  protocol                 = "-1"
+  security_group_id        = aws_security_group.eks_nodes.id
+  source_security_group_id = aws_security_group.eks_nodes.id
+}
+
+resource "aws_security_group_rule" "alb_http_in" {
+  type              = "ingress"
+  from_port         = 80
+  to_port           = 80
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.alb.id
+}
+
+resource "aws_security_group_rule" "alb_https_in" {
+  type              = "ingress"
+  from_port         = 443
+  to_port           = 443
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.alb.id
+}
+
+resource "aws_security_group_rule" "jumphost_ssh" {
+  type              = "ingress"
+  from_port         = 22
+  to_port           = 22
+  protocol          = "tcp"
+  cidr_blocks       = var.home_cidrs
+  security_group_id = aws_security_group.jumphost.id
+}
+
+resource "aws_security_group_rule" "alb_to_eks" {
+  type                     = "ingress"
+  from_port                = 3000
+  to_port                  = 3000
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.eks_nodes.id
+  source_security_group_id = aws_security_group.alb.id
+}
+
+resource "aws_security_group_rule" "eks_to_aurora" {
+  type                     = "ingress"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.aurora.id
+  source_security_group_id = aws_security_group.eks_nodes.id
+}
+
+resource "aws_security_group_rule" "jumphost_to_aurora" {
+  type                     = "ingress"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.aurora.id
+  source_security_group_id = aws_security_group.jumphost.id
+}
+
 resource "aws_security_group_rule" "nodes_to_cluster_api" {
-  description              = "Allow EKS nodes to communicate with the cluster API"
   type                     = "ingress"
   from_port                = 443
   to_port                  = 443
@@ -575,11 +490,25 @@ resource "aws_security_group_rule" "nodes_to_cluster_api" {
 }
 
 resource "aws_security_group_rule" "cluster_to_nodes_kubelet" {
-  description              = "Allow cluster control plane to talk to node kubelet"
   type                     = "ingress"
   from_port                = 10250
   to_port                  = 10250
   protocol                 = "tcp"
   security_group_id        = aws_security_group.eks_nodes.id
   source_security_group_id = aws_security_group.eks_cluster.id
+}
+
+########################################
+# VPC Endpoints
+########################################
+
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.${var.aws_region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = [aws_route_table.private.id]
+
+  tags = {
+    Name = "${var.environment}-s3-endpoint"
+  }
 }

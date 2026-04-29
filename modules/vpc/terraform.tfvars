@@ -1,5 +1,5 @@
 environment = "dev"
-home_cidrs  = ["74.88.51.116/32"]
+home_cidrs  = ["69.124.74.252/32"]
 
 vpc_cidr = "10.0.0.0/16"
 

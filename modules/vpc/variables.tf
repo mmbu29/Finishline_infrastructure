@@ -1,4 +1,5 @@
 # variables.tf — Finishline VPC Module
+
 variable "environment" {
   description = "Environment name (dev, staging, prod)."
   type        = string
@@ -24,6 +25,7 @@ variable "vpc_cidr" {
 variable "home_cidrs" {
   description = "List of operator home IP CIDRs allowed to SSH into the jumphost."
   type        = list(string)
+  # Tip: Ensure these are in CIDR notation, e.g., ["1.2.3.4/32"]
 }
 
 variable "public_subnets" {
@@ -42,7 +44,7 @@ variable "private_subnets" {
   }))
 }
 
-variable "private_to_public_nat" {
-  description = "Mapping of private subnet → public subnet for NAT routing."
-  type        = map(string)
-}
+# REMOVED: variable "private_to_public_nat" 
+# Since we are now using a single NAT Gateway, all private subnets 
+# point to the same resource. This mapping is no longer required 
+# in your main.tf logic.

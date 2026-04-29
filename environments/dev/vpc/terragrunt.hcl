@@ -15,7 +15,8 @@ inputs = {
   environment = local.environment
   vpc_cidr    = "10.0.0.0/16"
   project     = "finishline"
-  # Add your home IP if needed for the jumphost variable in your module
+  
+  # Home IP for Jumphost access
   home_cidrs  = ["69.124.74.252/32"] 
 
   public_subnets = {
@@ -28,9 +29,7 @@ inputs = {
     "private-1b" = { az = "us-east-1b", cidr = "10.0.21.0/24" }
   }
 
-  # High Availability: Each private subnet gets its own NAT Gateway in its own AZ
-  private_to_public_nat = {
-    "private-1a" = "public-1a"
-    "private-1b" = "public-1b"
-  }
+  # REMOVED: private_to_public_nat
+  # The module now defaults to using a single NAT Gateway for all private subnets 
+  # to optimize costs in the dev environment.
 }
