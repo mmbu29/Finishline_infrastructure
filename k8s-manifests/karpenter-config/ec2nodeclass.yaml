@@ -1,23 +1,18 @@
-apiVersion: karpenter.k8s.aws/v1beta1
+apiVersion: karpenter.k8s.aws/v1
 kind: EC2NodeClass
 metadata:
   name: bottlerocket-t3a
 spec:
   amiFamily: Bottlerocket
-
-  # MUST be the full IAM role ARN
-  role: arn:aws:iam::590183777783:role/finishline-dev-eks-karpenter-node-role
-
+  role: "KarpenterNodeRole-finishline-dev-eks" # The role we created with Terragrunt
   subnetSelectorTerms:
     - tags:
-        kubernetes.io/cluster/finishline-dev-eks: owned
-    - tags:
-        kubernetes.io/role/internal-elb: "1"
-
+        karpenter.sh/discovery: "finishline-dev-eks"
   securityGroupSelectorTerms:
     - tags:
-        kubernetes.io/cluster/finishline-dev-eks: owned
-
+        karpenter.sh/discovery: "finishline-dev-eks"
+  amiSelectorTerms:
+    - alias: bottlerocket@v1.30
   tags:
-    karpenter.sh/discovery: finishline-dev-eks
     Project: "FinishLine2026"
+    karpenter.sh/discovery: "finishline-dev-eks"
